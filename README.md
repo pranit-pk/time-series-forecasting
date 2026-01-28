@@ -1,17 +1,23 @@
-# NIFTY-50 Time Series Forecasting
+# NIFTY-50 Log-Return Forecasting  
+_Classical Time-Series Models vs LSTM_
 
 ## Overview
-This project focuses on forecasting the next-day closing value of the NIFTY-50
-index using historical daily market data from 2015 to 2024.
+This project evaluates the effectiveness of classical statistical models and deep
+learning for **short-horizon forecasting of NIFTY-50 log returns** using historical
+daily market data from 2015 to 2024.
 
-The goal is not to build a trading strategy, but to evaluate and compare different
-time-series modeling approaches on real financial data.
+Rather than attempting to build a trading strategy or optimize profit, the goal
+is to **rigorously compare modeling approaches under realistic market conditions**
+and assess whether increased model complexity provides meaningful predictive gains
+in an efficient financial market.
+
+---
 
 ## Dataset
-- Source: NSE India (via Kaggle)
-- Frequency: Daily
-- Period: Nov 2015 – Jul 2024
-- Features:
+- **Source:** NSE India (via Kaggle)
+- **Frequency:** Daily
+- **Period:** Nov 2015 – Jul 2024
+- **Raw Features:**
   - Open
   - High
   - Low
@@ -19,73 +25,135 @@ time-series modeling approaches on real financial data.
   - Shares Traded
   - Turnover (₹ Cr)
 
+### Target Variable
+The modeling target is the **daily log return** of the NIFTY-50 index:
+
+\[
+r_t = \log\left(\frac{Close_t}{Close_{t-1}}\right)
+\]
+
+Log returns were chosen instead of price levels to:
+- Enforce stationarity
+- Remove trend and scale effects
+- Enable fair comparison across models
+
+---
+
 ## Problem Statement
-Given the previous 60 trading days of market data, predict the next-day closing
-price of the NIFTY-50 index.
+Given the previous *N* trading days of log returns, predict the **next-day log
+return** of the NIFTY-50 index.
+
+This formulation reflects the realistic difficulty of forecasting short-term
+market movements in a highly liquid and information-efficient index.
+
+---
 
 ## Evaluation Strategy
-Models are evaluated using time-aware splits:
-- Train: 2015–2021
-- Validation: 2022–2023
-- Test: 2024
+To avoid data leakage and preserve temporal structure, **time-aware splits**
+were used:
 
-Performance is measured using RMSE and MAE.
+- **Train:** 2015–2021  
+- **Validation:** 2022–2023  
+- **Test:** 2024  
 
-## Baseline Model: Naive Persistence
+Models were evaluated using:
+- **RMSE** (Root Mean Squared Error)
+- **MAE** (Mean Absolute Error)
 
-As a minimum performance benchmark, a naive persistence model was used
-where the next-day closing price is assumed to be equal to the current
-day’s close.
+All metrics are reported on **log returns**, ensuring direct comparability across
+models.
 
-This baseline reflects the strong random-walk characteristics commonly
-observed in liquid financial markets and establishes a lower bound that
-all subsequent models must outperform.
+---
 
-Despite its simplicity, this baseline achieved competitive performance,
-highlighting the difficulty of short-horizon price forecasting.
+## Baseline Model — Naive Zero-Return Predictor
+As a minimum benchmark, a naive baseline was implemented that predicts the
+next-day log return as **zero**.
 
-## Classical Machine Learning Model: Linear Regression
+This baseline corresponds to the assumption that expected returns are zero,
+a common implication of the Efficient Market Hypothesis.
 
-A linear regression model was trained using lagged closing prices as
-features to capture short-term linear dependencies in the time series.
+Despite its simplicity, this model provides a strong reference point that more
+complex models must outperform to demonstrate genuine predictive value.
 
-The model used the previous five trading days’ closing prices as input
-features to predict the next-day close. This approach provides a simple
-and interpretable extension of the naive baseline.
+---
 
-The results showed a small but consistent improvement over the naive
-model, indicating that limited linear structure exists in the data.
-However, the dominance of the most recent lag reinforced the
-near-random-walk nature of the index.
+## Linear Regression (Lagged Returns)
+A linear regression model was trained using lagged log returns as input features.
 
-## Classical Time-Series Model (ARIMA)
+This model captures short-term linear dependencies while remaining interpretable
+and computationally simple.
 
-An ARIMA(1,1,1) model was implemented to evaluate whether classical
-time-series assumptions could improve next-day price forecasting.
+Results showed performance comparable to the naive baseline, indicating that
+any linear structure present in daily index returns is weak and short-lived.
 
-Stationarity was tested using the Augmented Dickey–Fuller (ADF) test.
-The closing price series was found to be non-stationary, while first
-differencing achieved stationarity, justifying the use of d = 1.
+---
 
-Although ARIMA is theoretically well-suited for random-walk-like
-financial series, it underperformed compared to simpler baselines in
-this setup. This was primarily due to error accumulation during
-recursive multi-step forecasting over the test horizon.
+## ARIMA (Statistical Time-Series Model)
+An ARIMA model was applied directly to the log-return series.
 
-This result highlights the limitations of classical ARIMA models for
-long-horizon price level forecasting on highly efficient markets.
+- Stationarity was confirmed using the Augmented Dickey–Fuller (ADF) test
+- Model orders were selected using AIC-based grid search
+- ARIMA(1,0,1) was retained as a parsimonious configuration
+
+Although ARIMA is theoretically well-suited for stationary time series, its
+performance was similar to simpler baselines, reinforcing the limited
+predictability of daily index returns.
+
+---
+
+## LSTM (Sequence Model on Log Returns)
+A Long Short-Term Memory (LSTM) network was implemented to test whether
+non-linear sequence modeling could extract additional signal from return
+history.
+
+Key design choices:
+- **Input:** Sequences of past log returns
+- **Sequence length:** 30 trading days (≈ one trading month)
+- **Architecture:** Single-layer LSTM with constrained capacity to limit
+  overfitting
+- **Training:** Early stopping based on validation loss
+
+Unlike price-level prediction, modeling returns removes trend-based illusion
+and provides a fair test of whether deep learning offers real advantages.
+
+---
 
 ## Model Comparison (Test Set)
 
-| Model                     | RMSE (approx) | MAE (approx) |
-|---------------------------|---------------|--------------|
-| Naive Persistence         | ~212          | ~136         |
-| Linear Regression (lags)  | ~210          | ~132         |
-| ARIMA(1,1,1)              | ~5177         | ~5118        |
+| Model                  | RMSE (log returns) | MAE (log returns) |
+|------------------------|--------------------|-------------------|
+| Naive (Zero Return)    | ~0.0095            | ~0.0059           |
+| Linear Regression      | ~0.0094            | ~0.0058           |
+| ARIMA (1,0,1)          | ~0.0094            | ~0.0059           |
+| **LSTM (seq = 30)**    | **~0.0075**        | **~0.0048**       |
 
-The naive persistence model established a strong baseline, reflecting
-the near-random-walk nature of the NIFTY-50 index. Linear regression with
-lagged features provided marginal improvement by exploiting short-term
-linear dependencies. ARIMA underperformed due to recursive forecasting
-error accumulation, reinforcing the difficulty of long-horizon price
-level prediction in efficient markets.
+The LSTM achieved a **modest but consistent improvement** over classical
+baselines, indicating that limited non-linear temporal structure may exist,
+even in highly efficient markets.
+
+Importantly, the gains are small, reflecting the intrinsic difficulty of
+short-term return prediction rather than model shortcomings.
+
+---
+
+## Key Insights
+- Daily NIFTY-50 returns exhibit near-random behavior with minimal exploitable
+  structure
+- Simple baselines remain highly competitive
+- ARIMA and linear models struggle to outperform the naive benchmark
+- LSTM provides **incremental improvement**, not dramatic gains
+- Increased model complexity does **not** imply guaranteed performance gains in
+  financial time series
+
+---
+
+## Conclusion
+This project demonstrates the importance of **problem formulation and evaluation
+discipline** in financial machine learning.
+
+By reframing the task from price prediction to log-return forecasting, the analysis
+avoids misleading conclusions and provides an honest assessment of model capability
+under realistic market conditions.
+
+The results highlight both the **limitations and appropriate use cases** of deep
+learning in financial time series modeling.
